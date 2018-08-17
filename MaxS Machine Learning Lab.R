@@ -1,4 +1,6 @@
 setwd('../Downloads/Machine_Learning_Lab/Machine_Learning_Lab/data')
+setwd('..')
+getwd()
 orders = read.csv('Orders.csv')
 names(orders)
 dim(orders)
@@ -108,3 +110,56 @@ cat1 = combo %>% filter(Returned=='Yes') %>% group_by(Category) %>% summarise(re
 cat2 = combo %>% group_by(Category) %>% summarise(total=sum(Quantity)) %>% arrange(-total)
 cat = cat1 %>% left_join(cat2,by='Category')
 cat %>% mutate(percent=100*returned/total) %>% arrange(-percent)
+
+
+##### PART 2 #############
+# Question 4
+# Part 1
+combo = orders %>% left_join(returns,by='Order.ID')
+combo$Returned <- as.character(combo$Returned)
+combo$Returned = ifelse(is.na(combo$Returned),combo$Returned<-0,combo$Returned<-1)
+y = combo$Returned
+
+# Part 2
+#names(combo)
+#class(combo$Ship.Date)
+#head(combo$Ship.Date)
+combo$Ship.Date = as.Date(combo$Ship.Date, "%m/%d/%Y")
+combo$Process.Time = combo$Ship.Date-combo$Order.Date
+#combo %>% select(Process.Time,Ship.Date,Order.Date)
+#class(combo$Process.Time)
+
+# Part 3
+productdeets = combo %>% group_by(Product.ID) %>% summarise(tn=n(),ts=sum(Quantity)) %>% arrange(-ts)
+productreturns = combo %>% filter(Returned==1) %>% group_by(Product.ID) %>% summarise(n=n(),s=sum(Quantity)) %>% arrange(-s)
+productdeets = productdeets %>% left_join(productreturns,by='Product.ID')
+productdeets$returnrateN = productdeets$n/productdeets$tn
+productdeets$returnrateS = productdeets$s/productdeets$ts
+combo = combo %>% left_join(productdeets,by='Product.ID')
+combo[is.na(combo$returnrateN),]$returnrateN<-0
+combo[is.na(combo$returnrateS),]$returnrateS<-0
+
+################
+# Question 5
+
+sat = combo %>% select(Ship.Mode,Segment,Region.x,Category,Process.Time,returnrateN,Shipping.Cost,Order.Priority,Returned)
+sat$Returned = as.factor(sat$Returned)
+
+names(combo)
+logit.saturated = glm(Returned ~ ., data = sat, family='binomial')
+summary(logit.saturated)
+set.seed(0)
+
+index <- sample(1:nrow(sat), size = nrow(sat)*0.8)
+prob <- predict(logit.saturated, sat[-index, -9], type = "response")
+mean((prob > 0.5) == (sat$Returned[-index] == 1))
+
+sim = combo %>% select(returnrateN,Process.Time,Returned)
+sim$Returned = as.factor(sim$Returned)
+
+logit.simple = glm(Returned~., data=sim,family='binomial')
+prob <- predict(logit.simple, sim[-index, -3], type = "response")
+anova(logit.simple,logit.saturated,test='Chisq')
+
+#  anova(model.birdsandyears,model.saturated,test='Chisq')
+# P value is not low enough, so we maintain that our birds and years model is better.
